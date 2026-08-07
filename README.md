@@ -10,7 +10,7 @@
 
 データはブラウザの `localStorage` に保存されるため、ブラウザ・端末をまたぐ同期はされない。定期的にスクリーンショットやCSVでバックアップすることを推奨。
 
-GitHub Pages で公開する場合は、このリポジトリの Settings > Pages で `main` ブランチ / ルートを指定すれば `index.html` がそのまま公開される。 https://kara401478-hash.github.io/asset-passbook/ 
+GitHub Pages で公開する場合は、このリポジトリの Settings > Pages で `main` ブランチ / ルートを指定すれば `index.html` がそのまま公開される。 
 
 ## 技術
 
