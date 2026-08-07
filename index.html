@@ -56,6 +56,7 @@
   let holdings = [];
   let goal = { targetAmount: 0, label: '目標資産額' };
   let history = [];
+  let projection = { rate: 5, years: 10 };
 
   const PRESETS = ['SBI証券 QQQ', 'SBI証券 S&P500', 'SBI証券 オルカン', 'SBI証券 AI・半導体', '普通預金', 'その他'];
 
@@ -90,6 +91,7 @@
         const parsed = JSON.parse(raw);
         holdings = parsed.holdings || [];
         goal = parsed.goal || goal;
+        projection = parsed.projection || projection;
       }
     } catch (e) { /* no data yet */ }
     try {
@@ -100,7 +102,7 @@
 
   function saveData() {
     try {
-      localStorage.setItem('passbook-data', JSON.stringify({ holdings, goal }));
+      localStorage.setItem('passbook-data', JSON.stringify({ holdings, goal, projection }));
     } catch (e) { console.error('save failed', e); }
   }
 
@@ -199,6 +201,26 @@
         </div>
         <div id="pb-chart"></div>
 
+        ${totalMonthly() > 0 ? `
+        <div style="border-top: 1px dashed var(--line); margin: 1.5rem 0 1rem;"></div>
+
+        <div class="mincho" style="font-size: 14px; color: var(--ink-2); margin-bottom: 4px;">積立予想(試算)</div>
+        <p style="font-size: 11px; color: var(--ink-2); margin: 0 0 10px;">現在の評価額と月次積立額をもとに、想定利回りで複利運用した場合の試算。実際の運用成果を保証するものではありません。</p>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+          <div style="flex: 1;">
+            <span style="font-size: 11px; color: var(--ink-2);">想定年利回り(%)</span>
+            <input id="pb-proj-rate" type="number" step="0.1" value="${projection.rate}" style="width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: #fff; font-size: 13px;">
+          </div>
+          <div style="flex: 1;">
+            <span style="font-size: 11px; color: var(--ink-2);">期間(年)</span>
+            <input id="pb-proj-years" type="number" step="1" value="${projection.years}" style="width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: #fff; font-size: 13px;">
+          </div>
+        </div>
+
+        <div id="pb-proj-chart"></div>
+        ` : ''}
+
       </div>
     `;
 
@@ -270,8 +292,60 @@
     });
 
     renderChart();
+
+    if (totalMonthly() > 0) {
+      const rateEl = document.getElementById('pb-proj-rate');
+      const yearsEl = document.getElementById('pb-proj-years');
+      renderProjectionChart(t, totalMonthly());
+      const onProjChange = () => {
+        projection.rate = Number(rateEl.value) || 0;
+        projection.years = Math.max(1, Number(yearsEl.value) || 1);
+        saveData();
+        renderProjectionChart(t, totalMonthly());
+      };
+      rateEl.addEventListener('change', onProjChange);
+      yearsEl.addEventListener('change', onProjChange);
+    }
+
     loading.style.display = 'none';
     root.style.display = 'block';
+  }
+
+  function renderProjectionChart(startTotal, monthlyAmount) {
+    const el = document.getElementById('pb-proj-chart');
+    if (!el) return;
+    const months = Math.round(projection.years * 12);
+    const mRate = (projection.rate / 100) / 12;
+    const points = [];
+    let val = startTotal;
+    for (let m = 0; m <= months; m++) {
+      if (m > 0) val = val * (1 + mRate) + monthlyAmount;
+      if (m % 12 === 0 || m === months) points.push({ month: m, value: val });
+    }
+    const w = 560, h = 130, pad = 32;
+    const vals = points.map(p => p.value);
+    const min = Math.min(startTotal, ...vals) * 0.98;
+    const max = Math.max(...vals) * 1.05 || 1;
+    const xStep = (w - pad*2) / (points.length - 1 || 1);
+    const pts = points.map((p, i) => {
+      const px = pad + i * xStep;
+      const py = h - pad - ((p.value - min) / (max - min || 1)) * (h - pad*2);
+      return [px, py];
+    });
+    const line = pts.map(([x,y], i) => `${i===0?'M':'L'}${x},${y}`).join(' ');
+    const dots = pts.map(([x,y]) => `<circle cx="${x}" cy="${y}" r="3" fill="#16233A"/>`).join('');
+    const final = points[points.length - 1].value;
+    el.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+        <span style="font-size: 12px; color: var(--ink-2);">${projection.years}年後の予想評価額</span>
+        <span class="mono" style="font-size: 20px; font-weight: 700;">${yen(final)}</span>
+      </div>
+      <svg viewBox="0 0 ${w} ${h+18}" style="width: 100%; height: auto;">
+        <path d="${line}" fill="none" stroke="#16233A" stroke-width="2" stroke-dasharray="5,3"/>
+        ${dots}
+        ${points.map((p, i) => `<text x="${pad + i*xStep}" y="${h+14}" font-size="10" fill="#6B6152" text-anchor="middle" font-family="JetBrains Mono, monospace">${Math.round(p.month/12)}年</text>`).join('')}
+      </svg>
+    `;
   }
 
   function escapeHtml(s) {
